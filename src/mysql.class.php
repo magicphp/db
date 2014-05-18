@@ -343,13 +343,13 @@
                                 $aItem[$sKey] = "";
                             }else{
                                 // Format fields -  by Patrick
-                                if (!is_null($this->aQuery['formatnumber'][$sKey])){
+                                if (!is_null(@$this->aQuery['formatnumber'][$sKey])){
                                     $aItem[$sKey] = number_format(  $mValue, 
                                                                     $this->aQuery['formatnumber'][$sKey]['decimals'], 
                                                                     $this->aQuery['formatnumber'][$sKey]['decpoint'], 
                                                                     $this->aQuery['formatnumber'][$sKey]['thousandsep']);
                                 }
-                                if (!is_null($this->aQuery['formatdatetime'][$sKey])){
+                                if (!is_null(@$this->aQuery['formatdatetime'][$sKey])){
                                     $aItem[$sKey] = date(   $this->aQuery['formatdatetime'][$sKey]['format'],
                                                             strtotime($mValue));
                                 }
