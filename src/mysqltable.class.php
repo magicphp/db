@@ -135,8 +135,22 @@
         }
         
         /**
+         * Function to set return limit
+         * 
+         * @param integer $iOffset
+         * @return \MySQLTable
+         */
+        public function Offset($iOffset = 0){
+            if(is_int($iOffset))
+                $this->aQuery["offset"] = $iOffset;
+            
+            return $this;
+        }
+        
+        /**
          * Function to format numbers
          * 
+         * @author Patrick Nogueira
          * @param string $sField
          * @param integer $iDecimals
          * @param string $sDecPoint
@@ -156,6 +170,7 @@
         /**
          * Function to format Date and Time
          * 
+         * @author Patrick Nogueira
          * @param string $sField
          * @param string $sFormat
          * @return \MySQLTable
@@ -211,7 +226,7 @@
             }
                        
             if(array_key_exists("limit", $this->aQuery))
-                $sSQL .= " LIMIT ".intval($this->aQuery["limit"]);
+                $sSQL .= (array_key_exists("offset", $this->aQuery)) ? " LIMIT ".intval($this->aQuery["offset"]).", ".intval($this->aQuery["limit"]) : " LIMIT ".intval($this->aQuery["limit"]);
 
             $oSTMT = $this->oConnection->stmt_init();
             $iMicrotime = microtime(true);
@@ -244,8 +259,6 @@
                     if(strnatcmp(phpversion(),'5.3') >= 0){ 
                         foreach($aRefs as $mValue)
                             $sSQL = substr_replace($sSQL, (substr($mValue, 0, 1) != "(") ? "'".$mValue."'" : $mValue, strpos($sSQL, "?"), 1);
-                        
-                         //echo "<pre>".$sSQL; die();
 
                         $oSTMT = mysqli_query($this->oConnection, $sSQL);
                     }
@@ -377,13 +390,20 @@
                 $sValues = substr($sValues, 0, -1);
                      
                 $iMicrotime = microtime(true);
-                $mResult = mysqli_query($this->oConnection, "INSERT INTO `".$this->sTableName."` (".$sFields.") VALUES (".$sValues.");");
-                Db::RecordLog("INSERT INTO `".$this->sTableName."` (".$sFields.") VALUES (".$sValues.");", $iMicrotime, 0, $this->Affected());
+                $sSQL = "INSERT INTO `".$this->sTableName."` (".$sFields.") VALUES (".$sValues.");";
+                $mResult = mysqli_query($this->oConnection, $sSQL);
+                Db::RecordLog($sSQL, $iMicrotime, 0, $this->Affected());
                 
-                //Event::AfterDatabaseInsert($mResult, mysqli_error($this->oConnection));                
+                if($mResult)
+                    $iID = $this->InsertID();
+                else
+                    $iID = null;
+                
+                if(Events::Has("AfterDataInsert"))
+                    Events::Call("AfterDataInsert", array($sSQL, $aResult));               
                 
                 if($fCallback)
-                    $fCallback($mResult, mysqli_error($this->oConnection));
+                    $fCallback($mResult, mysqli_error($this->oConnection), $iID);
             }
             
             return $this;
@@ -410,21 +430,24 @@
                 }
 
                 $sSetsSQL = substr($sSetsSQL, 0, -1);
-
-                //Filtros
+                
+                //Filters
                 $sFilterSQL = "";
 
                 foreach($aFilters as $mField => $mValue)
                     $sFilterSQL .= ((empty($sFilterSQL)) ? " WHERE " : " AND ") . "`{$mField}` = '{$mValue}'";
 
-                //Limites
+                //Limit
                 $sLimitSQL = (is_int($iLimit)) ? " LIMIT ".$iLimit : "";
 
                 if(!empty($sFilterSQL) && !empty($sSetsSQL)){
-                    //die("UPDATE `".$this->sTableName."` SET {$sSetsSQL} {$sFilterSQL} {$sLimitSQL};");
                     $iMicrotime = microtime(true);
-                    $mResult = mysqli_query($this->oConnection, "UPDATE `".$this->sTableName."` SET {$sSetsSQL} {$sFilterSQL} {$sLimitSQL};");
-                    Db::RecordLog("UPDATE `".$this->sTableName."` SET {$sSetsSQL} {$sFilterSQL} {$sLimitSQL};", $iMicrotime, 0, $this->Affected());
+                    $sSQL = "UPDATE `".$this->sTableName."` SET {$sSetsSQL} {$sFilterSQL} {$sLimitSQL};";
+                    $mResult = mysqli_query($this->oConnection, $sSQL);
+                    Db::RecordLog($sSQL, $iMicrotime, 0, $this->Affected());
+                    
+                    if(Events::Has("AfterDataUpdate"))
+                        Events::Call("AfterDataUpdate", array($sSQL, $aResult));
                     
                     if($fCallback)
                         $fCallback($mResult, mysqli_error($this->oConnection));
@@ -445,19 +468,24 @@
          */
         public function Delete($aFilters, $iLimit = 1, $fCallback = false){
             if(is_array($aFilters)){
-                //Filtros
+                //Filters
                 $sFilterSQL = "";
 
                 foreach($aFilters as $mField => $mValue)
                     $sFilterSQL .= ((empty($sFilterSQL)) ? " WHERE " : " AND ") . "`{$mField}` = '{$mValue}'";
                         
+                //Limit
                 if(intval($iLimit) <= 0)
                     $iLimit = 1;
                 
                 if(!empty($sFilterSQL)){
                     $iMicrotime = microtime(true);
-                    $mResult = mysqli_query($this->oConnection, "DELETE FROM `".$this->sTableName."` {$sFilterSQL} LIMIT {$iLimit};");
-                    Db::RecordLog("DELETE FROM `".$this->sTableName."` {$sFilterSQL} LIMIT {$iLimit};", $iMicrotime, 0, $this->Affected());
+                    $sSQL = "DELETE FROM `".$this->sTableName."` {$sFilterSQL} LIMIT {$iLimit};";
+                    $mResult = mysqli_query($this->oConnection, $sSQL);
+                    Db::RecordLog($sSQL, $iMicrotime, 0, $this->Affected());
+                    
+                    if(Events::Has("AfterDataDelete"))
+                        Events::Call("AfterDataDelete", array($sSQL, $aResult));
 
                     if($fCallback)
                         $fCallback($mResult, mysqli_error($this->oConnection));
@@ -465,6 +493,34 @@
             }
             
             return $this;
+        }
+        
+        /**
+         * Function to check existence of record
+         * 
+         * @param array $aFilters
+         * @return boolean
+         */
+        public function Exists($aFilters){
+            if(is_array($aFilters)){
+                $sFilterSQL = "";
+
+                foreach($aFilters as $mField => $mValue)
+                    $sFilterSQL .= ((empty($sFilterSQL)) ? " WHERE " : " AND ") . "`{$mField}` = '{$mValue}'";
+                    
+                if(!empty($sFilterSQL)){
+                    $iMicrotime = microtime(true);
+                    $mResult = mysqli_query($this->oConnection, "SELECT COUNT(*) as total FROM `".$this->sTableName."` {$sFilterSQL} LIMIT 1;");
+                    Db::RecordLog("SELECT COUNT(*) as total FROM `".$this->sTableName."` {$sFilterSQL} LIMIT 1;", $iMicrotime, 0, $this->Affected());
+                    
+                    if($mResult instanceof mysqli_result)
+                        $aItem = $mResult->fetch_assoc();
+                    
+                    return ($mResult instanceof mysqli_result) ? (count($aItem["total"]) > 0) : false;
+                }
+            }
+            
+            return false;
         }
         
         /**
