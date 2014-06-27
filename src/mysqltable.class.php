@@ -516,7 +516,7 @@
                     if($mResult instanceof mysqli_result)
                         $aItem = $mResult->fetch_assoc();
                     
-                    return ($mResult instanceof mysqli_result) ? (count($aItem["total"]) > 0) : false;
+                    return ($mResult instanceof mysqli_result) ? (intval($aItem["total"]) > 0) : false;
                 }
             }
             
