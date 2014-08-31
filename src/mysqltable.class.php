@@ -192,8 +192,12 @@
         public function Execute($fCallback){
             $sSQL = " SELECT";
             
-            foreach($this->aQuery["fields"] as $sField)
-                $sSQL .= " `".$sField."`, ";
+            foreach($this->aQuery["fields"] as $sField){
+                if($sField == '*')
+                    $sSQL .= " ".$sField.", ";
+                else
+                    $sSQL .= " `".$sField."`, ";
+            }
             
             $sSQL = substr($sSQL, 0, -2);
             $sSQL .= " FROM `".$this->sTableName."` ";
